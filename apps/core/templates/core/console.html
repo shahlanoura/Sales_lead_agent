@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Webfolks sales agent</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  fontFamily: { sans: ['Instrument Sans', 'system-ui', 'sans-serif'], serif: ['Newsreader', 'Georgia', 'serif'] },
+  colors: { ink: '#14213D', teal: { 50: '#ecf7f5', 200: '#a7dcd3', 600: '#0f766e', 700: '#0b5d57' } } } } };
+</script>
+<style type="text/tailwindcss">
+@layer components {
+  .nav { @apply flex w-full items-center justify-between gap-2 whitespace-nowrap rounded px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600; }
+  .nav.on { @apply bg-teal-50 font-semibold text-teal-700; }
+  .btn { @apply rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600; }
+  .btn-p { @apply rounded bg-teal-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600; }
+  .chip { @apply inline-block rounded px-2 py-0.5 text-xs font-medium; }
+  .box { @apply rounded-md border border-slate-200 bg-white; }
+  .th { @apply px-4 py-2 text-left text-xs font-medium text-slate-500; }
+  .td { @apply px-4 py-3 text-sm; }
+}
+</style>
+</head>
+<body class="bg-[#F3F5F7] font-sans text-ink antialiased">
+<div class="flex min-h-screen flex-col md:flex-row">
+
+<aside class="flex shrink-0 flex-col border-b border-slate-200 bg-white p-4 md:min-h-screen md:w-56 md:border-b-0 md:border-r">
+  <div class="mb-4 md:mb-6"><div class="text-lg font-semibold">Webfolks</div><div class="text-xs text-slate-500">Sales agent</div></div>
+  <nav class="flex gap-1 overflow-x-auto md:block md:space-y-1">
+    <button id="n-today" class="nav on" onclick="show('today')">Today</button>
+    <button id="n-campaigns" class="nav" onclick="show('campaigns')">Campaigns</button>
+    <button id="n-leads" class="nav" onclick="show('leads')">Leads</button>
+    <button id="n-approvals" class="nav" onclick="show('approvals')">Approvals <span id="badge" class="chip hidden bg-amber-100 text-amber-800"></span></button>
+    <button id="n-replies" class="nav" onclick="show('replies')">Replies</button>
+  </nav>
+  <div class="mt-4 rounded border border-teal-200 bg-teal-50 p-3 text-xs leading-5 text-teal-700 md:mt-auto">Human approval is on. Nothing is sent until a person approves it.</div>
+  <div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span id="who">Not signed in</span><button class="underline" onclick="openToken()">Token</button></div>
+</aside>
+
+<main class="min-w-0 flex-1 p-5 lg:p-8">
+<div id="msg" class="mb-4 hidden rounded border px-4 py-2.5 text-sm" role="status"></div>
+
+<!-- TODAY (sample data, not wired yet) -->
+<section id="v-today">
+  <h1 class="text-2xl font-semibold">Today</h1>
+  <p id="today-sub" class="mt-1 text-sm text-slate-500">Sign in with a token to see what is waiting for a person.</p>
+  <div id="today-list" class="box mt-5 divide-y divide-slate-100"></div>
+  <h2 class="mb-2 mt-8 text-sm font-semibold">Pipeline</h2>
+  <div id="pipe" class="box overflow-x-auto p-4 text-sm text-slate-500">No data yet.</div>
+</section>
+
+<!-- CAMPAIGNS -->
+<section id="v-campaigns" class="hidden">
+  <h1 class="text-2xl font-semibold">Campaigns</h1>
+  <div class="box mt-5 p-5">
+    <label for="goal" class="text-sm font-medium">What should this campaign achieve?</label>
+    <textarea id="goal" rows="2" class="mt-2 w-full rounded border border-slate-300 p-3 text-sm focus:outline-teal-600">Find 20 early-stage US startups that could use AI development services.</textarea>
+    <div class="mt-3 flex gap-2"><button id="btn-create" class="btn-p" onclick="submitGoal(true)">Create campaign</button><button id="btn-preview" class="btn" onclick="submitGoal(false)">Preview first</button></div>
+    <div id="goal-out" class="mt-5 hidden rounded bg-slate-50 p-4 text-sm" role="status"></div>
+  </div>
+  <div class="box mt-6 overflow-x-auto"><table class="w-full min-w-[34rem]">
+    <thead class="border-b border-slate-200"><tr><th class="th">Campaign</th><th class="th">Leads</th><th class="th">Status</th><th class="th"></th></tr></thead>
+    <tbody id="camp-rows" class="divide-y divide-slate-100"></tbody></table></div>
+</section>
+
+<!-- LEADS -->
+<section id="v-leads" class="hidden">
+  <h1 class="text-2xl font-semibold">Leads</h1>
+  <div class="mt-5 flex flex-wrap gap-2">
+    <input id="lq" oninput="renderLeads()" class="w-56 rounded border border-slate-300 px-3 py-1.5 text-sm" placeholder="Search company" aria-label="Search company">
+    <select id="lp" onchange="renderLeads()" class="rounded border border-slate-300 px-3 py-1.5 text-sm" aria-label="Priority"><option value="">All priorities</option><option>high</option><option>medium</option><option>low</option></select>
+  </div>
+  <div class="box mt-3 overflow-x-auto"><table class="w-full min-w-[46rem]">
+    <thead class="border-b border-slate-200"><tr><th class="th">Company</th><th class="th">Score</th><th class="th">Status</th><th class="th">Contact</th><th class="th">Owner</th></tr></thead>
+    <tbody id="lead-rows" class="divide-y divide-slate-100"></tbody></table></div>
+</section>
+
+<!-- APPROVALS -->
+<section id="v-approvals" class="hidden">
+  <h1 class="text-2xl font-semibold">Approvals</h1>
+  <p class="mt-1 text-sm text-slate-500">Read each draft against the company’s website. Approving sends it.</p>
+  <div class="mt-5 grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+    <div id="queue" class="box divide-y divide-slate-100 self-start text-sm"></div>
+    <article id="editor" class="min-w-0 rounded-md border border-slate-200 bg-white shadow-sm"></article>
+  </div>
+</section>
+
+<!-- REPLIES -->
+<section id="v-replies" class="hidden">
+  <h1 class="text-2xl font-semibold">Replies</h1>
+  <div class="box mt-5 p-5">
+    <label for="rl" class="text-sm font-medium">Lead</label>
+    <select id="rl" class="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm"></select>
+    <label for="rb" class="mt-4 block text-sm font-medium">Paste their reply</label>
+    <textarea id="rb" rows="4" class="mt-1 w-full rounded border border-slate-300 p-3 text-sm"></textarea>
+    <div class="mt-3"><button id="btn-reply" class="btn-p" onclick="analyseReply()">Analyse reply</button></div>
+    <div id="reply-out" class="mt-4 hidden space-y-3 text-sm"></div>
+  </div>
+</section>
+</main>
+</div>
+
+<dialog id="tok" class="rounded-md border border-slate-200 p-5 shadow-lg backdrop:bg-slate-900/30">
+  <label for="tokin" class="text-sm font-medium">API token</label>
+  <p class="mt-1 text-xs text-slate-500">Run <code>python manage.py drf_create_token admin</code> and paste the result.</p>
+  <input id="tokin" class="mt-2 w-80 max-w-full rounded border border-slate-300 px-3 py-1.5 text-sm">
+  <div class="mt-4 flex justify-end gap-2"><button class="btn" onclick="$('tok').close()">Cancel</button><button class="btn-p" onclick="saveToken()">Save</button></div>
+</dialog>
+
+<script>
+const API = '/api';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const list = d => Array.isArray(d) ? d : (d.results || []);
+const S = { me: null, camps: [], leads: [], outs: [], fus: [], sel: null };
+const views = ['today', 'campaigns', 'leads', 'approvals', 'replies'];
+
+function show(v) {
+  views.forEach(x => {
+    $('v-' + x).classList.toggle('hidden', x !== v);
+    $('n-' + x).className = x === v ? 'nav on' : 'nav';
+  });
+  window.scrollTo(0, 0);
+}
+function say(text, bad) {
+  const m = $('msg');
+  m.className = 'mb-4 rounded border px-4 py-2.5 text-sm ' + (bad ? 'border-red-200 bg-red-50 text-red-700' : 'border-teal-200 bg-teal-50 text-teal-700');
+  m.textContent = text;
+  clearTimeout(say.t); say.t = setTimeout(() => m.classList.add('hidden'), 7000);
+}
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', 'Authorization': 'Token ' + (localStorage.getItem('token') || '') } });
+  const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) openToken();
+    throw new Error(res.status === 401 ? 'Not signed in. Add a valid token.' : (data.detail || 'Request failed (' + res.status + ')'));
+  }
+  return data;
+}
+function openToken() { $('tokin').value = localStorage.getItem('token') || ''; $('tok').showModal(); }
+function saveToken() { localStorage.setItem('token', $('tokin').value.trim()); $('tok').close(); loadAll(); }
+
+const chip = (t, tone) => `<span class="chip ${({ teal:'bg-teal-50 text-teal-700', amber:'bg-amber-100 text-amber-800', red:'bg-red-100 text-red-700', grey:'bg-slate-100 text-slate-600' })[tone || 'grey']}">${esc(t)}</span>`;
+const statusTone = s => ({ interested:'teal', meeting_scheduled:'teal', converted:'teal', responded:'amber', opted_out:'red', disqualified:'red' })[s] || 'grey';
+const leadName = l => l.company_name || l.name || l.company || l.domain || ('Lead #' + l.id);
+const leadById = id => S.leads.find(l => l.id === id);
+const nameOfLead = id => { const l = leadById(id); return l ? leadName(l) : 'Lead #' + id; };
+const email = l => (l.contacts && l.contacts.find(c => c.email) || {}).email;
+
+async function loadAll() {
+  try {
+    const [me, c, l, o, f] = await Promise.all([api('/profile/').catch(() => null), api('/campaigns/'), api('/leads/'), api('/outreach/'), api('/followups/?status=awaiting_approval')]);
+    S.me = me; S.camps = list(c); S.leads = list(l); S.outs = list(o); S.fus = list(f);
+    $('who').textContent = me ? me.username + ' (' + me.role + ')' : 'Signed in';
+    renderAll();
+    api('/analytics/overview/').then(renderPipe).catch(() => {});
+  } catch (e) { say(e.message, true); }
+}
+const isMgr = () => !S.me || ['admin', 'manager'].includes(S.me.role);
+const pendingOuts = () => S.outs.filter(o => o.approval_status === 'pending' || (o.approval_status === 'approved' && o.sent_status === 'no_recipient'));
+
+function renderAll() { renderToday(); renderCamps(); renderLeads(); renderQueue(); renderReplyPicker(); }
+
+function renderToday() {
+  const po = pendingOuts().length, pf = S.fus.length, n = po + pf;
+  const b = $('badge'); b.textContent = n; b.classList.toggle('hidden', !n);
+  $('today-sub').textContent = n ? n + ' item' + (n > 1 ? 's are' : ' is') + ' waiting for a person.' : 'Nothing is waiting for you.';
+  const row = (t, d, label, view) => `<div class="flex flex-wrap items-center justify-between gap-3 border-l-4 border-amber-500 p-4"><div><div class="font-medium">${t}</div><div class="text-sm text-slate-500">${d}</div></div><button class="btn-p" onclick="show('${view}')">${label}</button></div>`;
+  $('today-list').innerHTML = (po ? row('Review ' + po + ' outreach draft' + (po > 1 ? 's' : ''), pendingOuts().slice(0, 3).map(o => esc(nameOfLead(o.lead))).join(', '), 'Open approvals', 'approvals') : '')
+    + (pf ? row('Approve ' + pf + ' follow-up' + (pf > 1 ? 's' : ''), 'Prospects who have not answered the first email.', 'Open follow-ups', 'approvals') : '')
+    || '<div class="p-4 text-sm text-slate-500">All clear.</div>';
+}
+function renderPipe(a) {
+  const st = a.leads_by_status || {};
+  const stages = [['discovered', 'Found'], ['researched', 'Researched'], ['qualified', 'Qualified'], ['contacted', 'Contacted'], ['responded', 'Replied'], ['interested', 'Interested'], ['meeting_scheduled', 'Meeting']];
+  const max = Math.max(1, ...stages.map(([k]) => st[k] || 0));
+  $('pipe').innerHTML = `<div class="flex min-w-[34rem] items-end gap-1">${stages.map(([k, l]) => `<div class="flex-1"><div class="rounded-sm bg-teal-600" style="height:${Math.max(4, Math.round((st[k] || 0) / max * 64))}px"></div><div class="mt-1 text-sm font-medium text-ink">${st[k] || 0}</div><div class="text-xs text-slate-500">${l}</div></div>`).join('')}</div>`
+    + `<div class="mt-3 text-xs">Outreach sent: ${a.outreach_sent} · Real replies: ${a.responses} · Response rate: ${a.response_rate == null ? 'n/a' : Math.round(a.response_rate * 100) + '%'}</div>`;
+}
+
+/* ---- Campaigns ---- */
+async function submitGoal(create) {
+  const out = $('goal-out'), goal = $('goal').value.trim();
+  const btns = [$('btn-create'), $('btn-preview')];
+  out.classList.remove('hidden');
+  if (goal.length < 10) { out.innerHTML = '<span class="text-red-700">Describe the goal in at least a sentence.</span>'; return; }
+  out.textContent = create ? 'Creating draft campaign…' : 'Reading your goal…';
+  btns.forEach(b => b.disabled = true);
+  try {
+    const d = await api('/campaigns/from-goal/', { method: 'POST', body: JSON.stringify({ goal, create }) });
+    const settings = d.preview || d.campaign || {};
+    const rows = Object.entries(settings).filter(([k, v]) => v !== null && v !== '' && typeof v !== 'object')
+      .map(([k, v]) => `<dt class="text-slate-500">${esc(k.replace(/_/g, ' '))}</dt><dd>${esc(v)}</dd>`).join('');
+    const qs = (d.clarifying_questions || []).map(q => `<li>${esc(q)}</li>`).join('');
+    out.innerHTML = `<div class="mb-2 font-medium">${create ? 'Draft campaign created. Nothing runs until you press Start.' : 'What the agent understood'}</div>`
+      + `<dl class="grid gap-x-6 gap-y-2 sm:grid-cols-[10rem_1fr]">${rows}</dl>`
+      + (qs ? `<div class="mt-3 text-amber-800"><div class="font-medium">Questions to check</div><ul class="list-disc pl-5">${qs}</ul></div>` : '');
+    if (create) loadAll();
+  } catch (e) { out.innerHTML = `<span class="text-red-700">${esc(e.message)}</span>`; }
+  finally { btns.forEach(b => b.disabled = false); }
+}
+function renderCamps() {
+  const tone = { active: 'teal', paused: 'amber', draft: 'grey' };
+  $('camp-rows').innerHTML = S.camps.length ? S.camps.map(c => {
+    const st = c.campaign_status || 'draft';
+    const n = S.leads.filter(l => (l.campaign && l.campaign.id || l.campaign) === c.id).length;
+    return `<tr><td class="td"><div class="font-medium">${esc(c.campaign_name || c.name || 'Campaign #' + c.id)}</div><div class="max-w-md truncate text-xs text-slate-500" title="${esc(c.goal_text)}">${esc(c.goal_text || '')}</div></td><td class="td">${n} of ${esc(c.target_lead_count ?? '?')}</td><td class="td">${chip(st, tone[st])}</td>
+      <td class="td text-right">${isMgr() ? `<button class="btn" onclick="campAct(${c.id},'find-leads',{})">Find leads</button> <button class="btn" onclick="campAct(${c.id},'find-leads',{run_pipeline:true})">Find, research and draft</button> ` : ''}
+      ${isMgr() ? (st === 'active' ? `<button class="btn" onclick="campAct(${c.id},'pause')">Pause</button>` : `<button class="btn-p" onclick="campAct(${c.id},'start')">Start</button>`) : ''}</td></tr>`;
+  }).join('') : '<tr><td class="td text-slate-500" colspan="4">No campaigns yet. Describe a goal above.</td></tr>';
+}
+async function campAct(id, action, body) {
+  try { await api(`/campaigns/${id}/${action}/`, { method: 'POST', body: JSON.stringify(body || {}) }); say(({ 'find-leads': 'Searching for companies. Refresh in a minute.', start: 'Campaign started.', pause: 'Campaign paused.' })[action]); loadAll(); }
+  catch (e) { say(e.message, true); }
+}
+
+/* ---- Leads ---- */
+function renderLeads() {
+  const q = ($('lq').value || '').toLowerCase(), p = $('lp').value;
+  const rows = S.leads.filter(l => (!q || leadName(l).toLowerCase().includes(q)) && (!p || l.priority === p));
+  $('lead-rows').innerHTML = rows.length ? rows.map(l => `<tr><td class="td"><div class="font-medium">${esc(leadName(l))}</div><div class="text-xs text-slate-500">${esc(l.website || '')}</div></td>
+    <td class="td">${esc(l.lead_score ?? '')} ${l.priority ? chip(l.priority, l.priority === 'high' ? 'teal' : 'grey') : ''}</td>
+    <td class="td">${chip((l.status || '').replace(/_/g, ' '), statusTone(l.status))}</td>
+    <td class="td">${email(l) ? esc(email(l)) : '<span class="text-amber-800">No contact found</span>'}</td>
+    <td class="td ${l.assigned_to ? '' : 'text-slate-400'}">${esc(l.assigned_to_name || l.assigned_to || 'Unassigned')}</td></tr>`).join('')
+    : '<tr><td class="td text-slate-500" colspan="5">No leads found.</td></tr>';
+}
+
+/* ---- Approvals ---- */
+function items() {
+  return [...pendingOuts().map(o => ({ kind: 'o', id: o.id, d: o })), ...S.fus.map(f => ({ kind: 'f', id: f.id, d: f }))];
+}
+const cur = () => items().find(i => i.kind === S.sel?.kind && i.id === S.sel?.id);
+function pick(kind, id) { S.sel = { kind, id }; renderQueue(); }
+function renderQueue() {
+  const its = items();
+  if (!cur() && its[0]) S.sel = { kind: its[0].kind, id: its[0].id };
+  $('queue').innerHTML = its.length ? its.map(i => {
+    const on = S.sel && S.sel.kind === i.kind && S.sel.id === i.id;
+    const sub = i.kind === 'f' ? 'Follow-up' : (i.d.sent_status === 'no_recipient' ? 'Approved, no recipient yet' : 'First email');
+    return `<button onclick="pick('${i.kind}',${i.id})" class="block w-full p-3 text-left hover:bg-slate-50 ${on ? 'border-l-4 border-teal-600 bg-teal-50' : ''}"><div class="font-medium">${esc(nameOfLead(i.d.lead))}</div><div class="text-xs text-slate-500">${sub}</div></button>`;
+  }).join('') : '<div class="p-4 text-slate-500">Nothing to approve.</div>';
+  renderEditor();
+}
+function renderEditor() {
+  const it = cur(), ed = $('editor');
+  if (!it) { ed.innerHTML = '<div class="p-6 text-sm text-slate-500">Select a draft on the left.</div>'; return; }
+  const d = it.d, lead = leadById(d.lead) || {};
+  const body = d.body ?? d.message_body ?? '';
+  const noRecipient = it.kind === 'o' && d.sent_status === 'no_recipient';
+  ed.innerHTML = `
+    <div class="border-b border-slate-100 p-4 text-sm">
+      <div class="flex flex-wrap items-center gap-2"><span class="w-14 text-slate-500">To</span>${email(lead) ? `<span class="font-medium">${esc(email(lead))}</span>` : '<span class="text-amber-800">No contact found, cannot send yet</span>'}</div>
+      ${it.kind === 'o' ? `<div class="mt-3 flex items-center gap-2"><label for="subj" class="w-14 text-slate-500">Subject</label><input id="subj" class="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1" value="${esc(d.subject || '')}"></div>` : '<div class="mt-2 text-slate-500">Follow-up</div>'}
+    </div>
+    ${noRecipient ? '<div class="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">This draft is approved but had no recipient. Add a contact with an email, then press Approve and send again.</div>' : ''}
+    <div id="body" contenteditable="true" class="whitespace-pre-wrap p-6 font-serif text-[17px] leading-7 focus:outline-none">${esc(body)}</div>
+    <div class="border-t border-slate-100 p-4">
+      <fieldset class="space-y-2 text-sm"><legend class="sr-only">Before you approve</legend>
+        <label class="flex items-start gap-2"><input type="checkbox" class="mt-1 accent-teal-600" onchange="chk()"> I checked the facts against their website.</label>
+        <label class="flex items-start gap-2"><input type="checkbox" class="mt-1 accent-teal-600" onchange="chk()"> The idea is not something they already offer.</label>
+      </fieldset>
+      <div class="mt-4 flex flex-wrap items-center gap-2"><button id="ok" class="btn-p" disabled onclick="approve()">Approve and send</button>${it.kind === 'o' && !noRecipient ? '<button id="no" class="btn" onclick="reject()">Reject draft</button>' : ''}${it.kind === 'f' ? '<button id="no" class="btn" onclick="cancelFu()">Cancel follow-up</button>' : ''}</div>
+    </div>`;
+}
+function chk() { $('ok').disabled = !Array.from(document.querySelectorAll('#editor input[type=checkbox]')).every(b => b.checked); }
+async function act(fn, okText) {
+  const it = cur(); if (!it) return;
+  $('ok').disabled = true;
+  try { const r = await fn(it); say(typeof okText === 'function' ? okText(r) : okText); S.sel = null; await loadAll(); }
+  catch (e) { say(e.message, true); $('ok').disabled = false; }
+}
+const approve = () => act(it => api(it.kind === 'o' ? `/outreach/${it.id}/approve/` : `/followups/${it.id}/approve/`,
+  { method: 'POST', body: JSON.stringify(it.kind === 'o' ? { subject: $('subj').value, body: $('body').innerText.trim() } : { body: $('body').innerText.trim() }) }),
+  r => r.sent === false ? 'Approved but not sent.' : 'Approved. Sending.');
+const reject = () => act(it => api(`/outreach/${it.id}/reject/`, { method: 'POST' }), 'Draft rejected.');
+const cancelFu = () => act(it => api(`/followups/${it.id}/cancel/`, { method: 'POST' }), 'Follow-up cancelled.');
+
+/* ---- Replies ---- */
+function renderReplyPicker() { $('rl').innerHTML = S.leads.map(l => `<option value="${l.id}">${esc(leadName(l))}</option>`).join(''); }
+async function analyseReply() {
+  const id = $('rl').value, body = $('rb').value.trim(), out = $('reply-out');
+  out.classList.remove('hidden');
+  if (!id || !body) { out.innerHTML = '<span class="text-red-700">Choose a lead and paste their reply.</span>'; return; }
+  $('btn-reply').disabled = true; out.textContent = 'Reading the reply…';
+  try {
+    const r = await api(`/leads/${id}/replies/`, { method: 'POST', body: JSON.stringify({ body }) });
+    out.innerHTML = `<div class="rounded bg-slate-50 p-3">${chip(r.classification || 'unknown', statusTone(r.classification))} <span class="ml-1">${esc(r.summary)}</span></div>`
+      + (r.suggested_reply ? `<div><div class="mb-1 font-medium">Suggested reply, for you to edit (never sent automatically)</div><div contenteditable="true" class="whitespace-pre-wrap rounded border border-slate-200 p-3 font-serif text-[17px] leading-7">${esc(r.suggested_reply)}</div></div>` : '')
+      + `<div class="text-slate-500">Lead is now: ${esc(r.lead_status)}${r.assigned_to ? ' · assigned to ' + esc(r.assigned_to) : ''}</div>`;
+    loadAll();
+  } catch (e) { out.innerHTML = `<span class="text-red-700">${esc(e.message)}</span>`; }
+  finally { $('btn-reply').disabled = false; }
+}
+
+if (localStorage.getItem('token')) loadAll(); else openToken();
+</script>
+</body>
+</html>
+
