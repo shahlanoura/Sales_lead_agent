@@ -1,4 +1,6 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db.models import Count
 from rest_framework import mixins, status, viewsets
 from rest_framework.authtoken.models import Token
@@ -13,7 +15,7 @@ from apps.agents.goals import parse_goal
 from apps.agents.replies import process as process_reply
 
 from .discovery import import_leads_csv, normalize_domain
-from .models import (Campaign, CommunicationLog, FollowUp, InvalidTransition, Lead, LeadStatus,
+from .models import (Campaign, CommunicationLog, Contact, FollowUp, InvalidTransition, Lead, LeadStatus,
                      OptOut, OutreachMessage, Reply)
 from .serializers import (CampaignSerializer, FollowUpSerializer, LeadSerializer,
                           OutreachSerializer, ResearchSerializer)
@@ -181,6 +183,27 @@ class LeadViewSet(viewsets.ModelViewSet):
                          "suggested_reply": reply.suggested_reply, "lead_status": lead.status,
                          "assigned_to": str(lead.assigned_to) if lead.assigned_to else None})
 
+    @action(detail=True, methods=["post"])
+    def contacts(self, request, pk=None):
+        """Add a recipient to a lead. Body: {"email": "...", "contact_name": "", "job_title": ""}"""
+        lead = self.get_object()
+        addr = (request.data.get("email") or "").strip().lower()
+        try:
+            validate_email(addr)
+        except DjangoValidationError:
+            return Response({"detail": "Enter a valid email address."}, status=400)
+        if OptOut.objects.filter(email__iexact=addr).exists():
+            return Response({"detail": "This address has opted out and can never be contacted."}, status=400)
+        c, created = Contact.objects.get_or_create(
+            lead=lead, email=addr,
+            defaults={"contact_name": (request.data.get("contact_name") or "")[:200],
+                      "job_title": (request.data.get("job_title") or "")[:200],
+                      "verification_status": "manual", "source_url": f"added by {request.user.username}"})
+        if not created and c.verification_status == "bounced":
+            return Response({"detail": "That address bounced earlier. Use a different one."}, status=400)
+        fresh = Lead.objects.prefetch_related("contacts").get(pk=lead.pk)  # the list fetched earlier is stale now
+        return Response(LeadSerializer(fresh).data, status=201 if created else 200)
+
     @action(detail=True, methods=["post"], url_path="mark-replied")
     def mark_replied(self, request, pk=None):
         lead = self.get_object()
@@ -314,5 +337,3 @@ def logout(request):
 def profile(request):
     u: User = request.user
     return Response({"id": u.id, "username": u.username, "email": u.email, "role": role_of(u)})
-
-

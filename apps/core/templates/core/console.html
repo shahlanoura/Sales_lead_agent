@@ -110,6 +110,19 @@ tailwind.config = { theme: { extend: {
   <div class="mt-4 flex justify-end gap-2"><button class="btn" onclick="$('tok').close()">Cancel</button><button class="btn-p" onclick="saveToken()">Save</button></div>
 </dialog>
 
+<dialog id="cdlg" class="rounded-md border border-slate-200 p-5 shadow-lg backdrop:bg-slate-900/30">
+  <div id="cd-title" class="text-sm font-medium">Add contact</div>
+  <p class="mt-1 max-w-sm text-xs text-slate-500">Use an address you found yourself, such as the company’s contact page or a person’s profile. Do not guess addresses.</p>
+  <label for="cd-name" class="mt-3 block text-xs text-slate-500">Name (optional)</label>
+  <input id="cd-name" class="w-80 max-w-full rounded border border-slate-300 px-3 py-1.5 text-sm">
+  <label for="cd-job" class="mt-3 block text-xs text-slate-500">Job title (optional)</label>
+  <input id="cd-job" class="w-80 max-w-full rounded border border-slate-300 px-3 py-1.5 text-sm">
+  <label for="cd-email" class="mt-3 block text-xs text-slate-500">Email</label>
+  <input id="cd-email" type="email" class="w-80 max-w-full rounded border border-slate-300 px-3 py-1.5 text-sm">
+  <div id="cd-err" class="mt-2 hidden text-xs text-red-700" role="alert"></div>
+  <div class="mt-4 flex justify-end gap-2"><button type="button" class="btn" onclick="$('cdlg').close()">Cancel</button><button type="button" id="cd-save" class="btn-p" onclick="saveContact()">Save contact</button></div>
+</dialog>
+
 <script>
 const API = '/api';
 const $ = id => document.getElementById(id);
@@ -148,7 +161,7 @@ const statusTone = s => ({ interested:'teal', meeting_scheduled:'teal', converte
 const leadName = l => l.company_name || l.name || l.company || l.domain || ('Lead #' + l.id);
 const leadById = id => S.leads.find(l => l.id === id);
 const nameOfLead = id => { const l = leadById(id); return l ? leadName(l) : 'Lead #' + id; };
-const email = l => (l.contacts && l.contacts.find(c => c.email) || {}).email;
+const email = l => l.primary_email || undefined;  // the address the backend will really use
 
 async function loadAll() {
   try {
@@ -224,7 +237,7 @@ function renderLeads() {
   $('lead-rows').innerHTML = rows.length ? rows.map(l => `<tr><td class="td"><div class="font-medium">${esc(leadName(l))}</div><div class="text-xs text-slate-500">${esc(l.website || '')}</div></td>
     <td class="td">${esc(l.lead_score ?? '')} ${l.priority ? chip(l.priority, l.priority === 'high' ? 'teal' : 'grey') : ''}</td>
     <td class="td">${chip((l.status || '').replace(/_/g, ' '), statusTone(l.status))}</td>
-    <td class="td">${email(l) ? esc(email(l)) : '<span class="text-amber-800">No contact found</span>'}</td>
+    <td class="td">${email(l) ? esc(email(l)) : '<span class="text-amber-800">No contact found</span> <button class="ml-1 text-xs text-teal-700 underline" onclick="openContact(' + l.id + ')">Add</button>'}</td>
     <td class="td ${l.assigned_to ? '' : 'text-slate-400'}">${esc(l.assigned_to_name || l.assigned_to || 'Unassigned')}</td></tr>`).join('')
     : '<tr><td class="td text-slate-500" colspan="5">No leads found.</td></tr>';
 }
@@ -253,7 +266,7 @@ function renderEditor() {
   const noRecipient = it.kind === 'o' && d.sent_status === 'no_recipient';
   ed.innerHTML = `
     <div class="border-b border-slate-100 p-4 text-sm">
-      <div class="flex flex-wrap items-center gap-2"><span class="w-14 text-slate-500">To</span>${email(lead) ? `<span class="font-medium">${esc(email(lead))}</span>` : '<span class="text-amber-800">No contact found, cannot send yet</span>'}</div>
+      <div id="toline" class="flex flex-wrap items-center gap-2"><span class="w-14 text-slate-500">To</span>${toHtml(lead)}</div>
       ${it.kind === 'o' ? `<div class="mt-3 flex items-center gap-2"><label for="subj" class="w-14 text-slate-500">Subject</label><input id="subj" class="min-w-0 flex-1 rounded border border-slate-200 px-2 py-1" value="${esc(d.subject || '')}"></div>` : '<div class="mt-2 text-slate-500">Follow-up</div>'}
     </div>
     ${noRecipient ? '<div class="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">This draft is approved but had no recipient. Add a contact with an email, then press Approve and send again.</div>' : ''}
@@ -270,12 +283,12 @@ function chk() { $('ok').disabled = !Array.from(document.querySelectorAll('#edit
 async function act(fn, okText) {
   const it = cur(); if (!it) return;
   $('ok').disabled = true;
-  try { const r = await fn(it); say(typeof okText === 'function' ? okText(r) : okText); S.sel = null; await loadAll(); }
+  try { const r = await fn(it); const t = typeof okText === 'function' ? okText(r) : okText; say(t.text || t, t.bad); S.sel = null; await loadAll(); }
   catch (e) { say(e.message, true); $('ok').disabled = false; }
 }
 const approve = () => act(it => api(it.kind === 'o' ? `/outreach/${it.id}/approve/` : `/followups/${it.id}/approve/`,
   { method: 'POST', body: JSON.stringify(it.kind === 'o' ? { subject: $('subj').value, body: $('body').innerText.trim() } : { body: $('body').innerText.trim() }) }),
-  r => r.sent === false ? 'Approved but not sent.' : 'Approved. Sending.');
+  sentMsg);
 const reject = () => act(it => api(`/outreach/${it.id}/reject/`, { method: 'POST' }), 'Draft rejected.');
 const cancelFu = () => act(it => api(`/followups/${it.id}/cancel/`, { method: 'POST' }), 'Follow-up cancelled.');
 
@@ -294,6 +307,42 @@ async function analyseReply() {
     loadAll();
   } catch (e) { out.innerHTML = `<span class="text-red-700">${esc(e.message)}</span>`; }
   finally { $('btn-reply').disabled = false; }
+}
+
+/* ---- Contacts ---- */
+let contactLead = null;
+const toHtml = l => email(l)
+  ? `<span class="font-medium">${esc(email(l))}</span> <button class="text-xs text-teal-700 underline" onclick="openContact(${l.id})">Add another contact</button>`
+  : `<span class="text-amber-800">No contact found, cannot send yet</span> <button class="btn" onclick="openContact(${l.id})">Add contact</button>`;
+function openContact(id) {
+  contactLead = id;
+  ['cd-name', 'cd-job', 'cd-email'].forEach(k => $(k).value = '');
+  $('cd-err').classList.add('hidden');
+  $('cd-title').textContent = 'Add contact for ' + nameOfLead(id);
+  $('cdlg').showModal();
+  $('cd-email').focus();
+}
+async function saveContact() {
+  const addr = $('cd-email').value.trim(), err = $('cd-err');
+  if (!addr || !addr.includes('@')) { err.textContent = 'Enter a valid email address.'; err.classList.remove('hidden'); return; }
+  $('cd-save').disabled = true;
+  try {
+    const l = await api(`/leads/${contactLead}/contacts/`, { method: 'POST', body: JSON.stringify({ email: addr, contact_name: $('cd-name').value.trim(), job_title: $('cd-job').value.trim() }) });
+    S.leads = S.leads.map(x => x.id === l.id ? l : x);
+    $('cdlg').close();
+    say('Contact saved. Emails to this company now go to ' + (l.primary_email || addr) + '.');
+    renderLeads();
+    const t = $('toline'), it = cur();
+    if (t && it && it.d.lead === l.id) t.innerHTML = '<span class="w-14 text-slate-500">To</span>' + toHtml(l);
+  } catch (e) { err.textContent = e.message; err.classList.remove('hidden'); }
+  finally { $('cd-save').disabled = false; }
+}
+function sentMsg(r) {
+  if (r.sent === false) return { text: 'Approved but not sent.', bad: true };
+  if (r.sent_status === 'sent' || r.sent === true) return 'Approved and sent.';
+  if (r.sent_status === 'no_recipient') return { text: 'Approved, but there is no recipient yet. Add a contact, then press Approve and send again.', bad: true };
+  if (r.sent_status === 'duplicate') return { text: 'Not sent: this company was already emailed from another campaign.', bad: true };
+  return 'Approved. Sending.';
 }
 
 if (localStorage.getItem('token')) loadAll(); else openToken();

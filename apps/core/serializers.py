@@ -18,11 +18,16 @@ class ContactSerializer(serializers.ModelSerializer):
 
 class LeadSerializer(serializers.ModelSerializer):
     contacts = ContactSerializer(many=True, read_only=True)
+    primary_email = serializers.SerializerMethodField()  # the address the email will really go to
 
     class Meta:
         model = Lead
         fields = "__all__"
         read_only_fields = ["domain", "lead_score", "priority", "status", "created_at"]
+
+    def get_primary_email(self, obj):
+        c = obj.primary_contact()
+        return c.email if c else None
 
 
 class ResearchSerializer(serializers.ModelSerializer):
@@ -42,3 +47,5 @@ class FollowUpSerializer(serializers.ModelSerializer):
     class Meta:
         model = FollowUp
         fields = "__all__"
+
+        
